@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fake News Detector — Demo</title>
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --muted:#9aa4b2;
+      --accent:#6ee7b7;
+      --danger:#ff7b7b;
+      --glass: rgba(255,255,255,0.03);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial; background:linear-gradient(180deg,#071029 0%, #081428 100%); color:#e6eef6; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:40px}
+    .wrap{width:100%;max-width:980px}
+
+    header{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+    .logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#1e293b,#0ea5a1);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px}
+    h1{margin:0;font-size:20px}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:18px}
+    @media (max-width:880px){.grid{grid-template-columns:1fr}}
+
+    .card{background:var(--card);padding:18px;border-radius:12px;box-shadow:0 6px 22px rgba(2,6,23,0.7)}
+
+    textarea#input{width:100%;height:320px;padding:14px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:var(--glass);color:inherit;font-size:14px;resize:vertical}
+
+    .controls{display:flex;gap:10px;margin-top:10px}
+    button{background:#0ea5a1;border:none;color:#012; padding:10px 12px;border-radius:8px;font-weight:600;cursor:pointer}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+
+    .result-title{font-size:13px;margin-bottom:6px}
+    .meter{height:14px;border-radius:999px;background:rgba(255,255,255,0.04);overflow:hidden}
+    .meter > i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#34d399,#059669);transition:width .6s ease}
+
+    .label{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:rgba(255,255,255,0.03);font-weight:600}
+
+    ul.diagnostics{margin:10px 0 0 0;padding:0;list-style:none}
+    ul.diagnostics li{padding:9px;border-radius:8px;margin-bottom:8px;background:rgba(255,255,255,0.02);font-size:13px;display:flex;justify-content:space-between}
+    small.hint{color:var(--muted);display:block;margin-top:8px}
+
+    .badge{font-weight:700;padding:6px 8px;border-radius:8px}
+
+    footer{margin-top:14px;color:var(--muted);font-size:12px}
+
+    /* tiny helpers */
+    .muted{color:var(--muted)}
+    .flex{display:flex;gap:8px;align-items:center}
+    .stack{display:flex;flex-direction:column;gap:8px}
+    .chip{background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:8px;font-size:13px}
+    .source-list{max-height:160px;overflow:auto;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div class="logo">FN</div>
+      <div>
+        <h1>Fake News Detector — Demo</h1>
+        <p class="lead">Client-side proof-of-concept. Paste an article or headline and click Analyze. (No network required.)</p>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <label for="input" class="muted">Paste article text or headline</label>
+        <textarea id="input" placeholder="Paste article here..." aria-label="Article input"></textarea>
+
+        <div class="controls">
+          <button id="analyze">Analyze</button>
+          <button class="secondary" id="sample">Load sample</button>
+          <button class="secondary" id="clear">Clear</button>
+        </div>
+
+        <div id="explain" style="margin-top:12px"></div>
+
+        <footer>
+          <small class="muted">This is a heuristic demo — for production add server-side ML or fact-checking APIs.</small>
+        </footer>
+      </div>
+
+      <aside class="card">
+        <div>
+          <div class="result-title">Verdict</div>
+          <div style="display:flex;gap:10px;align-items:center;justify-content:space-between">
+            <div id="verdictLabel" class="label">No analysis yet</div>
+            <div class="badge" id="confBadge">—</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div class="meter"><i id="meterFill"></i></div>
+          </div>
+
+          <div style="margin-top:12px">
+            <strong class="muted">Diagnostics</strong>
+            <ul class="diagnostics" id="diagnostics">
+              <li>Length <span id="len">0</span></li>
+              <li>Sensational words <span id="sens">0</span></li>
+              <li>All-caps ratio <span id="caps">0%</span></li>
+              <li>Sources found <span id="src">0</span></li>
+            </ul>
+          </div>
+
+          <div style="margin-top:12px">
+            <strong class="muted">Detected sources / links</strong>
+            <div class="source-list" id="sourcelist">—</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <strong class="muted">Suggestions</strong>
+            <div class="stack" id="suggestions">
+              <div class="chip">Use authoritative sources &amp; citations</div>
+              <div class="chip">Avoid sensational language and clickbait</div>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    // Simple client-side heuristic fake-news detector
+    const sensational = [
+      'shocking','reveal','you won\'t believe','miracle','exposed','unbelievable','secret','must see','breaking','huge','urgent','exclusive','cure','ban','banned','scandal','conspiracy','deep state','miracle']
+
+    function analyzeText(text){
+      const data = {length:text.length, sensationalCount:0, capsRatio:0, sources:[], exclamations:0}
+      const lower = text.toLowerCase()
+
+      // sensational words
+      sensational.forEach(w=>{ if(lower.includes(w)) data.sensationalCount++ })
+
+      // all-caps ratio: token-based
+      const tokens = text.match(/\b[A-Z]{2,}\b/g) || []
+      data.capsRatio = Math.round((tokens.length / Math.max(1, text.split(/\s+/).length)) * 100)
+
+      // exclamations
+      data.exclamations = (text.match(/!/g)||[]).length
+
+      // links / sources
+      const links = text.match(/https?:\/\/[^\s]+|www\.[^\s]+/gi) || []
+      data.sources = Array.from(new Set(links))
+
+      // quoted attributions like "according to" or [1]
+      const attributions = (text.match(/according to|said|reported|\[\d+\]/gi) || []).length
+      data.attributions = attributions
+
+      // basic sentiment direction via presence of 'hoax' etc
+      const hoaxish = (lower.match(/hoax|fake|false|misinformation|debunk/)||[]).length
+      data.hoaxMentions = hoaxish
+
+      return data
+    }
+
+    function scoreFromData(d){
+      // start neutral 50 (0=definitely real, 100=definitely fake)
+      let score = 50
+      // shorter pieces are less reliable
+      if (d.length < 200) score += 8
+      else if (d.length < 600) score += 4
+
+      // sensational words
+      score += Math.min(20, d.sensationalCount * 5)
+
+      // exclamations
+      score += Math.min(10, d.exclamations * 2)
+
+      // all caps ratio
+      score += Math.min(15, d.capsRatio * 0.8)
+
+      // lack of sources reduces credibility
+      if (d.sources.length === 0 && d.attributions === 0) score += 12
+      else score -= Math.min(10, d.sources.length * 3)
+
+      // mentions of 'hoax' (could indicate factchecking)
+      score -= Math.min(12, d.hoaxMentions * 6)
+
+      // clamp
+      score = Math.max(0, Math.min(100, Math.round(score)))
+      return score
+    }
+
+    function verdictFromScore(score){
+      if (score >= 70) return {label:'Likely Fake', color:'#ff7b7b'}
+      if (score >= 45) return {label:'Uncertain / Mixed', color:'#fbbf24'}
+      return {label:'Likely Real', color:'#34d399'}
+    }
+
+    function updateUI(d,score){
+      document.getElementById('len').textContent = d.length
+      document.getElementById('sens').textContent = d.sensationalCount
+      document.getElementById('caps').textContent = d.capsRatio + '%'
+      document.getElementById('src').textContent = d.sources.length
+
+      const sl = document.getElementById('sourcelist')
+      sl.innerHTML = d.sources.length ? d.sources.map(s=>'<div style="padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.02);font-size:13px">'+escapeHtml(s)+'</div>').join('') : '—'
+
+      const vb = verdictFromScore(score)
+      const labelEl = document.getElementById('verdictLabel')
+      labelEl.textContent = vb.label
+      labelEl.style.background = 'rgba(255,255,255,0.03)'
+      labelEl.style.color = '#001'
+      labelEl.style.fontWeight = '700'
+      document.getElementById('confBadge').textContent = score + '%'
+
+      const meter = document.getElementById('meterFill')
+      meter.style.width = score + '%'
+
+      // suggestions
+      const sug = document.getElementById('suggestions')
+      sug.innerHTML = ''
+      if (d.sources.length === 0 && d.attributions === 0){
+        sug.innerHTML += '<div class="chip">Add verifiable sources and links</div>'
+      }
+      if (d.sensationalCount > 0){
+        sug.innerHTML += '<div class="chip">Reduce sensational words like "shocking", "you won\'t believe"</div>'
+      }
+      if (d.capsRatio > 5){
+        sug.innerHTML += '<div class="chip">Avoid ALL-CAPS sections — they lower trust</div>'
+      }
+
+      // explanation area
+      const explain = document.getElementById('explain')
+      explain.innerHTML = '<small class="muted">Analysis summary — the detector uses simple heuristics. For production, integrate with fact-checking services or ML models.</small>'
+    }
+
+    function escapeHtml(s){
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    }
+
+    document.getElementById('analyze').addEventListener('click',()=>{
+      const text = document.getElementById('input').value.trim()
+      if(!text){ alert('Paste an article or headline first.'); return }
+      const d = analyzeText(text)
+      const score = scoreFromData(d)
+      updateUI(d,score)
+    })
+
+    document.getElementById('clear').addEventListener('click',()=>{
+      document.getElementById('input').value = ''
+      document.getElementById('verdictLabel').textContent = 'No analysis yet'
+      document.getElementById('confBadge').textContent = '—'
+      document.getElementById('meterFill').style.width = '0%'
+      document.getElementById('diagnostics').querySelectorAll('li')[0].lastElementChild.textContent = '0'
+      document.getElementById('sourcelist').innerHTML = '—'
+      document.getElementById('suggestions').innerHTML = '<div class="chip">Use authoritative sources &amp; citations</div><div class="chip">Avoid sensational language and clickbait</div>'
+    })
+
+    document.getElementById('sample').addEventListener('click',()=>{
+      const sample = `BREAKING: Scientists reveal miracle cure for XYZ! You won't believe how simple it is. According to unnamed sources, this cure eliminates disease immediately. Read more at www.example-sensational-site.com`;
+      document.getElementById('input').value = sample
+    })
+
+    // initialize suggestions
+    document.getElementById('suggestions').innerHTML = '<div class="chip">Use authoritative sources &amp; citations</div><div class="chip">Avoid sensational language and clickbait</div>'
+  </script>
+</body>
+</html>
